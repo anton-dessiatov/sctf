@@ -1,0 +1,8 @@
+-- +goose Up
+CREATE TABLE `cluster` (
+  id INT NOT NULL AUTO_INCREMENT,
+  template JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT NOW(),
+  updated_at DATETIME NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

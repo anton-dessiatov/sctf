@@ -1,0 +1,22 @@
+version: "2.1"
+services:
+  db_check:
+    entrypoint: echo
+    image: alpine:3.9.4
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:5.7.22
+    container_name: direct_db
+    ports:
+      - "5558:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "101202"
+      MYSQL_DATABASE: "direct"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "-p101202", "ping", "-h", "localhost" ]
+      timeout: 5s
+      retries: 10
+
