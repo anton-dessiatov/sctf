@@ -1,0 +1,8 @@
+/direct/config.yml
+/direct/direct
+/tf/tf
+/tf/terraform-provider-aws
+/tf/terraform-provider-google
+/tf/config.yml
+/pulumi/config.yml
+/pulumi/pulumi
