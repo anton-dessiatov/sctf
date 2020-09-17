@@ -124,6 +124,8 @@ resource aws_instance "{{.ResourceID}}" {
   instance_type = "t2.micro"
   key_name		= "anton_home"
 
+  disable_api_termination = true
+
   subnet_id = aws_subnet.{{.ResourceID}}_sub.id
   vpc_security_group_ids = [aws_security_group.allow_ssh.id]
   associate_public_ip_address = true
