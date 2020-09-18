@@ -13,5 +13,6 @@ var ClusterCmd = &cobra.Command{
 
 func init() {
 	ClusterCmd.AddCommand(CreateCmd)
+	ClusterCmd.AddCommand(CreateEIPCmd)
 	ClusterCmd.AddCommand(DestroyCmd)
 }
