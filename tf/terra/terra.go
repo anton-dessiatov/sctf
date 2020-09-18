@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/terraform/addrs"
 	"github.com/hashicorp/terraform/configs"
 	"github.com/hashicorp/terraform/states"
@@ -164,6 +166,47 @@ func (t *Terra) Refresh(si StackIdentity, s Stack) tfdiags.Diagnostics {
 	newState, refreshDiags := tfCtx.Refresh()
 	diags = diags.Append(refreshDiags)
 	if refreshDiags.HasErrors() {
+		return diags
+	}
+
+	err := statemgr.WriteAndPersist(st, newState)
+	if err != nil {
+		diags = diags.Append(err)
+		return diags
+	}
+
+	return diags
+}
+
+func (t *Terra) Import(si StackIdentity, s Stack, resourceAddress, resourceID string) tfdiags.Diagnostics {
+	tfCtx, st, diags := t.context(terraform.ContextOpts{}, s, &si)
+	if diags.HasErrors() {
+		return diags
+	}
+
+	// Parse the provided resource address.
+	traversalSrc := []byte(resourceAddress)
+	traversal, travDiags := hclsyntax.ParseTraversalAbs(traversalSrc, "<import-address>", hcl.Pos{Line: 1, Column: 1})
+	diags = diags.Append(travDiags)
+	if travDiags.HasErrors() {
+		return diags
+	}
+	addr, addrDiags := addrs.ParseAbsResourceInstance(traversal)
+	diags = diags.Append(addrDiags)
+	if addrDiags.HasErrors() {
+		return diags
+	}
+
+	newState, importDiags := tfCtx.Import(&terraform.ImportOpts{
+		Targets: []*terraform.ImportTarget{
+			&terraform.ImportTarget{
+				Addr: addr,
+				ID:   resourceID,
+			},
+		},
+	})
+	diags = diags.Append(importDiags)
+	if diags.HasErrors() {
 		return diags
 	}
 
