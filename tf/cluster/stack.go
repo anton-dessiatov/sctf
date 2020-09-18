@@ -132,6 +132,12 @@ resource aws_instance "{{.ResourceID}}" {
     Name = "{{.ResourceID}}"
   }
 }
+
+resource aws_eip "{{.ResourceID}}_eip" {
+  vpc = true
+  instance                  = aws_instance.{{.ResourceID}}.id
+}
+
 {{end}}
 `)
 	if err != nil {
