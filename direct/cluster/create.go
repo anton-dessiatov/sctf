@@ -41,9 +41,14 @@ func Create(app *app.App, template model.ClusterTemplate) error {
 			return fmt.Errorf("op.createRtb: %w", err)
 		}
 
-		err = op.createInstance(subnet)
+		instance, err := op.createInstance(subnet)
 		if err != nil {
 			return fmt.Errorf("op.createInstance: %w", err)
+		}
+
+		err = op.createEIP(instance)
+		if err != nil {
+			return fmt.Errorf("op.createEIP: %w", err)
 		}
 	}
 
@@ -67,6 +72,7 @@ type createOperation struct {
 	subnets        []*dal.Subnet
 	rtbs           []*dal.RTB
 	instances      []*dal.Instance
+	eips           []*dal.ElasticIP
 
 	ec2 *ec2.EC2
 }
@@ -269,7 +275,7 @@ func (op *createOperation) createSSHSecurityGroup() error {
 	return nil
 }
 
-func (op *createOperation) createInstance(subnet *dal.Subnet) error {
+func (op *createOperation) createInstance(subnet *dal.Subnet) (*dal.Instance, error) {
 	runInstancesOutput, err := op.ec2.RunInstances(&ec2.RunInstancesInput{
 		InstanceType: aws.String("t2.micro"),
 		ImageId:      aws.String("ami-0817d428a6fb68645"),
@@ -288,7 +294,7 @@ func (op *createOperation) createInstance(subnet *dal.Subnet) error {
 		MaxCount: aws.Int64(1),
 	})
 	if err != nil {
-		return fmt.Errorf("op2.ec2.RunInstances: %w", err)
+		return nil, fmt.Errorf("op2.ec2.RunInstances: %w", err)
 	}
 	log.Printf("Created instance %q\n", *runInstancesOutput.Instances[0].InstanceId)
 
@@ -299,7 +305,7 @@ func (op *createOperation) createInstance(subnet *dal.Subnet) error {
 		Status: "PENDING",
 	}
 	if err := op.app.DB.Create(&instance).Error; err != nil {
-		return fmt.Errorf("op.app.DB.Create: %w", err)
+		return nil, fmt.Errorf("op.app.DB.Create: %w", err)
 	}
 	op.instances = append(op.instances, &instance)
 
@@ -318,14 +324,14 @@ func (op *createOperation) createInstance(subnet *dal.Subnet) error {
 
 	err = op.ec2.WaitUntilInstanceRunning(describeInstancesInput)
 	if err != nil {
-		return fmt.Errorf("op.ec2.WaitUntilInstanceRunning: %w", err)
+		return nil, fmt.Errorf("op.ec2.WaitUntilInstanceRunning: %w", err)
 	}
 
 	log.Printf("Waited successfully, querying instance %q public IP\n", instance.ExternalID)
 
 	describeInstancesOut, err := op.ec2.DescribeInstances(describeInstancesInput)
 	if err != nil {
-		return fmt.Errorf("op.ec2.DescribeInstances: %w", err)
+		return nil, fmt.Errorf("op.ec2.DescribeInstances: %w", err)
 	}
 
 	publicIP := *describeInstancesOut.Reservations[0].Instances[0].PublicIpAddress
@@ -335,8 +341,19 @@ func (op *createOperation) createInstance(subnet *dal.Subnet) error {
 	instance.Status = "ACTIVE"
 
 	if err := op.app.DB.Save(&instance).Error; err != nil {
-		return fmt.Errorf("op.app.DB.Save: %w", err)
+		return nil, fmt.Errorf("op.app.DB.Save: %w", err)
 	}
+
+	return &instance, nil
+}
+
+func (op *createOperation) createEIP(instance *dal.Instance) error {
+	eip, err := NewCreateEIP(op.app.DB, op.ec2, op.cluster).Do(instance)
+	if err != nil {
+		return fmt.Errorf("NewCreateEIP.Do: %w", err)
+	}
+
+	op.eips = append(op.eips, eip)
 
 	return nil
 }

@@ -18,6 +18,12 @@ func Destroy(app *app.App, cluster dal.Cluster) error {
 		return fmt.Errorf("newDestroyOperation: %w", err)
 	}
 
+	for i := range op.eips {
+		if err := op.destroyEIP(&op.eips[i]); err != nil {
+			return fmt.Errorf("op.destroyEIP: %w", err)
+		}
+	}
+
 	for i := range op.instances {
 		if err := op.destroyInstance(&op.instances[i]); err != nil {
 			return fmt.Errorf("op.destroyInstances: %w", err)
@@ -66,6 +72,7 @@ type destroyOperation struct {
 	subnets        []dal.Subnet
 	rtbs           []dal.RTB
 	instances      []dal.Instance
+	eips           []dal.ElasticIP
 
 	ec2 *ec2.EC2
 }
@@ -111,6 +118,10 @@ func newDestroyOperation(app *app.App, cluster dal.Cluster) (*destroyOperation, 
 
 	if err := withClusterID.Where("status = ?", "ACTIVE").Find(&result.instances).Error; err != nil {
 		return nil, fmt.Errorf("withClusterID.Where.Find(instances): %w")
+	}
+
+	if err := withClusterID.Where("status = ?", "ACTIVE").Find(&result.eips).Error; err != nil {
+		return nil, fmt.Errorf("withClusterID.Where.Find(eips): %w", err)
 	}
 
 	cluster.Status = "DELETING"
@@ -277,6 +288,41 @@ func (op *destroyOperation) destroyInstance(instance *dal.Instance) error {
 
 	instance.Status = "DELETED"
 	if err := op.app.DB.Save(instance).Error; err != nil {
+		return fmt.Errorf("op.app.DB.Save: %w", err)
+	}
+
+	return nil
+}
+
+func (op *destroyOperation) destroyEIP(eip *dal.ElasticIP) error {
+	if eip.AssociationID != nil {
+		_, err := op.ec2.DisassociateAddress(&ec2.DisassociateAddressInput{
+			AssociationId: eip.AssociationID,
+		})
+		if err != nil {
+			return fmt.Errorf("op.ec2.DisassociateAddress: %w", err)
+		}
+
+		log.Printf("Disassociated address %q (%q)", eip.ExternalID,
+			*eip.AssociationID)
+
+		eip.InstanceID = nil
+		eip.AssociationID = nil
+		if err := op.app.DB.Save(eip).Error; err != nil {
+			return fmt.Errorf("op.app.DB.Update: %w", err)
+		}
+	}
+
+	_, err := op.ec2.ReleaseAddress(&ec2.ReleaseAddressInput{
+		AllocationId: aws.String(eip.ExternalID),
+	})
+	if err != nil {
+		return fmt.Errorf("op.ec2.ReleaseAddress: %w", err)
+	}
+	log.Printf("Released address %q", eip.ExternalID)
+
+	eip.Status = "DELETED"
+	if err := op.app.DB.Save(eip).Error; err != nil {
 		return fmt.Errorf("op.app.DB.Save: %w", err)
 	}
 

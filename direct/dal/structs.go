@@ -65,3 +65,14 @@ type Instance struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
+
+type ElasticIP struct {
+	ID            int
+	ClusterID     int
+	ExternalID    string
+	InstanceID    *int
+	AssociationID *string
+	Status        string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
